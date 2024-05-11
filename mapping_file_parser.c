@@ -5,16 +5,26 @@ typedef struct {
 	unsigned char len;
 	char * str;
 } StringLength;
-const static struct{
-	char * str;
-	int len;
-} hex_prefices[]={
-	{"0X",2},
-	{"X",1},
-	{"\\X",2},
-	{"/X",2},
-	{"U",1},
-};
+
+static char * skip_hex_prefix(char * line_buffer_ptr){
+	const static struct{
+		char * str;
+		int len;
+	} hex_prefices[]={
+		{"0X",2},
+		{"X",1},
+		{"\\X",2},
+		{"/X",2},
+		{"U",1},
+	};
+	for (int i=0;i<sizeof(hex_prefices)/sizeof(hex_prefices[0]);i++){
+		if (memcmp(line_buffer_ptr, hex_prefices[i].str, hex_prefices[i].len)==0){
+			line_buffer_ptr+=hex_prefices[i].len;
+			break;
+		}
+	}
+	return line_buffer_ptr;
+}
 
 MappingTable parse_mapping_file(FILE * mapping_file){
 	MappingTable result;
@@ -27,7 +37,7 @@ MappingTable parse_mapping_file(FILE * mapping_file){
 	Mapping * table_ptr=result.table;
 	while (!feof(mapping_file)){
 		char * line_buffer_ptr=line_buffer;
-		int scanf_result,codepoint,advance_by;
+		int codepoint,advance_by;
 		unsigned char hex_byte;
 		unsigned char from[MAPPING_STRING_MAX_LEN];
 		unsigned char * from_ptr=from;
@@ -47,20 +57,11 @@ MappingTable parse_mapping_file(FILE * mapping_file){
 			line_buffer_ptr[i] = toupper(line_buffer_ptr[i]);
 		}
 
-		for (int i=0;i<sizeof(hex_prefices)/sizeof(hex_prefices[0]);i++){
-			int len=hex_prefices[i].len;
-			const char * rest_of_string=hex_prefices[i].str;
-			if (memcmp(line_buffer_ptr, rest_of_string, len)==0){
-				line_buffer_ptr+=len;
-				break;
-			}
-		}
+		line_buffer_ptr=skip_hex_prefix(line_buffer_ptr);
 		table_ptr->special_flags=0;
-//		scanf_result=sscanf(line_buffer_ptr, "0x%02x%n", &hex_byte,&advance_by);
 		do {
-			scanf_result=sscanf(line_buffer_ptr, "%02hhx%n", &hex_byte,&advance_by);
 
-			if (scanf_result==0){
+			if (sscanf(line_buffer_ptr, "%02hhx%n", &hex_byte,&advance_by)==0){
 				*from_ptr++=table_ptr-result.table;
 				break;
 			} else 
@@ -73,16 +74,8 @@ MappingTable parse_mapping_file(FILE * mapping_file){
 
 		while(isspace(*line_buffer_ptr)) line_buffer_ptr++;
 		do {
-			for (int i=0;i<sizeof(hex_prefices)/sizeof(hex_prefices[0]);i++){
-				int len=hex_prefices[i].len;
-				const char * rest_of_string=hex_prefices[i].str;
-				if (memcmp(line_buffer_ptr, rest_of_string, len)==0){
-					line_buffer_ptr+=len;
-					break;
-				}
-			}
-			scanf_result=sscanf(line_buffer_ptr,"%x%n",&codepoint,&advance_by);
-			if (scanf_result==0)
+			line_buffer_ptr=skip_hex_prefix(line_buffer_ptr);
+			if (sscanf(line_buffer_ptr,"%x%n",&codepoint,&advance_by)==0)
 				table_ptr->special_flags|=PARTIAL;
 			else {
 				line_buffer_ptr+=advance_by;
@@ -112,7 +105,7 @@ MappingTable parse_mapping_file(FILE * mapping_file){
 end:
 	result.len=table_ptr-result.table;
 	if(fail) {
-		free(result.table);
+		clear_mapping_table(result);
 		result.table=NULL;
 		result.len=0;
 	}
@@ -121,14 +114,16 @@ end:
 	return result;
 
 }
-convert_result convert(
+convert_result convert_to_utf8(
 	MappingTable table,
-	const unsigned char * in,
+	const unsigned char * restrict in,
 	size_t inlen,
-	unsigned char * out,
+	unsigned char * restrict out,
 	size_t outbuflen,
-	size_t * outlen
+	size_t * restrict outlen
 ){
+	size_t outlen_tmp;
+	if (outlen==NULL) outlen=&outlen_tmp;
 	size_t in_iter=0;
 	*outlen=0;
 
@@ -137,12 +132,11 @@ convert_result convert(
 		bool found_partial=false;
 		for (size_t i=0; i<table.len; i++){
 			Mapping mapping=table.table[i];
-			if (inlen < MAPPING_STRING_LENGTH(mapping.from)) {
-				if (memcmp(in+in_iter, to_cstr(&mapping.from), inlen)==0)
+			if (inlen-in_iter < MAPPING_STRING_LENGTH(mapping.from)) {
+				if (memcmp(in+in_iter, to_cstr(&mapping.from), inlen-in_iter)==0)
 					found_partial=true;
 				
 			} else if (memcmp(in+in_iter, to_cstr(&mapping.from), MAPPING_STRING_LENGTH(mapping.from))==0){		
-
 				if (mapping.special_flags&PARTIAL)
 					found_partial=true;
 				else {
@@ -161,20 +155,63 @@ convert_result convert(
 		if (!found)
 			return found_partial?INCOMPLETE_CHARACTER:INVALID_CHARACTER;
 		
-		
 	}
 	size_t naughts=outbuflen-*outlen;
 	naughts=naughts>4?4:naughts;
 	memset(out+*outlen, '\0', naughts);
 	return CONVERSION_OK;
 }
+convert_result convert_from_utf8(
+	MappingTable table,
+	const unsigned char * restrict in,
+	size_t inlen,
+	unsigned char * restrict  out,
+	size_t outbuflen,
+	size_t * restrict outlen
+){
+	size_t outlen_tmp;
+	if (outlen==NULL) outlen=&outlen_tmp;
+	size_t in_iter=0;
+	*outlen=0;
 
+	while (in_iter < inlen) {
+		bool found=false;
+		bool found_partial=false;
+		for (size_t i=0; i<table.len; i++){
+			Mapping mapping=table.table[i];
+			if (mapping.special_flags & PARTIAL) continue;
+			else if (inlen-in_iter < MAPPING_STRING_LENGTH(mapping.to)) {
+				if (memcmp(in+in_iter, to_cstr(&mapping.to), inlen-in_iter)==0)
+					found_partial=true;
+				
+			} else if (memcmp(in+in_iter, to_cstr(&mapping.to), MAPPING_STRING_LENGTH(mapping.to))==0){		
+				if (*outlen+MAPPING_STRING_LENGTH(mapping.from) > outbuflen)
+					return BUFFER_NOT_BIG_ENOUGH;
+
+				memcpy(out+*outlen,to_cstr(&mapping.from), MAPPING_STRING_LENGTH(mapping.from));
+				*outlen+=MAPPING_STRING_LENGTH(mapping.from);
+				in_iter+=MAPPING_STRING_LENGTH(mapping.to);
+				found=true;
+				break;
+			}
+
+		}
+		
+		if (!found)
+			return found_partial?INCOMPLETE_CHARACTER:INVALID_CHARACTER;
+		
+	}
+	if (outbuflen < *outlen)
+		out[*outlen]='\0';
+	
+	return CONVERSION_OK;
+}
 void clear_mapping_table(MappingTable table){
 	for (size_t i=0; i<table.len; i++){
 		Mapping mapping=table.table[i];
-		if (!MAPPING_STRING_ISPACKED(mapping.from))
+		if (!MAPPING_IS_ERROR(mapping.from)&&!MAPPING_STRING_ISPACKED(mapping.from))
 			free(to_cstr(&mapping.from));
-		if (!MAPPING_STRING_ISPACKED(mapping.to))
+		if (!MAPPING_IS_ERROR(mapping.to)&&!MAPPING_STRING_ISPACKED(mapping.to))
 			free(to_cstr(&mapping.to));
 	}
 	free(table.table);

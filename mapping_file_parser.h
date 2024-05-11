@@ -2,14 +2,17 @@
 #define MAPPING_FILE_PARSER_H
 #include <stdio.h>
 #include "string_format.h"
-
+typedef enum {
+	RV=1,
+	PARTIAL=0x80
+} SpecialFlags;
 typedef struct  {
 	MappingString from;
 	MappingString to;
-	uint64_t special_flags;
+	SpecialFlags special_flags;
 } Mapping;
-#define RV 1
-#define PARTIAL 0x80
+
+
 
 typedef struct {
 	Mapping * table;
@@ -23,13 +26,20 @@ typedef enum {
 	BUFFER_NOT_BIG_ENOUGH
 
 } convert_result;
-convert_result convert(MappingTable table,
-	const unsigned char * in,
+convert_result convert_to_utf8(MappingTable table,
+	const unsigned char * restrict in,
 	size_t inlen,
-	unsigned char * out,
+	unsigned char * restrict out,
 	size_t outbuflen,
-	size_t * outlen
+	size_t * restrict outlen
 );
-
+convert_result convert_from_utf8(
+	MappingTable table,
+	const unsigned char * restrict in,
+	size_t inlen,
+	unsigned char * restrict out,
+	size_t outbuflen,
+	size_t * restrict outlen
+);
 void clear_mapping_table(MappingTable);
 #endif
