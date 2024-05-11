@@ -5,7 +5,6 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
-#include "inline.h"
 typedef union {
 	struct {
 		intptr_t unpacked_str : (sizeof(intptr_t)-1)*CHAR_BIT;
@@ -21,7 +20,7 @@ _Static_assert(sizeof(MappingString)==sizeof(intptr_t));
 #define MAPPING_IS_ERROR(x) (MAPPING_STRING_LENGTH(x)==MAPPING_STRING_MAX_LEN+1)
 
 
-INLINE MappingString from_cstr_impl(const unsigned char * str, short len){
+static inline MappingString from_cstr_impl(const unsigned char * str, short len){
 	MappingString result;
 	result.len=MAPPING_STRING_PACKED_MAX_LEN-len;
 	if (len < 0) len=strnlen((char *)str,MAPPING_STRING_MAX_LEN+1);
@@ -39,7 +38,7 @@ INLINE MappingString from_cstr_impl(const unsigned char * str, short len){
 	const unsigned char *: (const MappingString)from_cstr_impl(x,y),\
 	unsigned char *: from_cstr_impl(x,y)\
 )
-INLINE MappingString from_cstr_heap(const unsigned char * str, short len){
+static inline MappingString from_cstr_heap(const unsigned char * str, short len){
 
 	unsigned char * new_str;
 	/*Avoid Memory Leak with packed strings*/
@@ -56,7 +55,7 @@ INLINE MappingString from_cstr_heap(const unsigned char * str, short len){
 }
 
 
-INLINE unsigned char * to_cstr_impl(const MappingString * mystr){
+static inline unsigned char * to_cstr_impl(const MappingString * mystr){
 	if (MAPPING_IS_ERROR(*mystr))
 		return NULL;
 	else 
@@ -68,7 +67,7 @@ INLINE unsigned char * to_cstr_impl(const MappingString * mystr){
 	const MappingString *: (const unsigned char *)to_cstr_impl(x),\
 	MappingString *: to_cstr_impl(x)\
 )
-INLINE unsigned char * to_cstr_heap(const MappingString * mystr){
+static inline unsigned char * to_cstr_heap(const MappingString * mystr){
 	unsigned char * new_str =(unsigned char *) malloc(mystr->len+1);
 	memcpy(new_str, to_cstr(mystr), mystr->len);
 	new_str[mystr->len]='\0';

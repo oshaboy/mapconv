@@ -5,8 +5,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
-#include "inline.h"
-INLINE uint32_t byte_reverse(uint32_t a){
+static inline uint32_t byte_reverse(uint32_t a){
     char buf[sizeof(uint32_t)];
     memcpy(buf, &a, sizeof(uint32_t));
     for (int i=0; i<(sizeof(uint32_t)/2); i++){
@@ -19,7 +18,7 @@ INLINE uint32_t byte_reverse(uint32_t a){
 }
 
 
-INLINE size_t codepoint_length_in_utf8(int codepoint){
+static inline size_t codepoint_length_in_utf8(int codepoint){
     static const unsigned char results[]={
         1,1,1,1,1,1,1,1,
         2,2,2,2,
@@ -31,12 +30,12 @@ INLINE size_t codepoint_length_in_utf8(int codepoint){
     return results[32-__builtin_clz(codepoint)];
 }
 
-INLINE size_t find_length_utf8(unsigned char c){
+static inline size_t find_length_utf8(unsigned char c){
     static const unsigned char results[]={1,0,2,3,4,0,0,0};
     return results[__builtin_clz(((unsigned int)(~c))<<24)];
 }
 
-INLINE int parse_utf8(const unsigned char * str, size_t * s){
+static inline int parse_utf8(const unsigned char * str, size_t * s){
     size_t _;
     if (!s) s=&_;
 
@@ -65,7 +64,7 @@ typedef struct {
     unsigned char len : 3;
 } UTF8_Bytes;
 
-INLINE UTF8_Bytes put_utf8(int codepoint){
+static inline UTF8_Bytes put_utf8(int codepoint){
     size_t s=codepoint_length_in_utf8(codepoint);
     if (s == 0){
         return (UTF8_Bytes) {
