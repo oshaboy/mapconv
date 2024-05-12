@@ -53,7 +53,7 @@ MappingTable parse_mapping_file(FILE * mapping_file){
 		if (*line_buffer_ptr=='#' || *line_buffer_ptr=='\0')
 			continue;
 		/*convert to uppercase*/
-		for(int i = 0; line_buffer_ptr[i]; i++){
+		for(size_t i = 0; line_buffer_ptr[i]; i++){
 			line_buffer_ptr[i] = toupper(line_buffer_ptr[i]);
 		}
 
@@ -208,11 +208,8 @@ convert_result convert_from_utf8(
 }
 void clear_mapping_table(MappingTable table){
 	for (size_t i=0; i<table.len; i++){
-		Mapping mapping=table.table[i];
-		if (!MAPPING_IS_ERROR(mapping.from)&&!MAPPING_STRING_ISPACKED(mapping.from))
-			free(to_cstr(&mapping.from));
-		if (!MAPPING_IS_ERROR(mapping.to)&&!MAPPING_STRING_ISPACKED(mapping.to))
-			free(to_cstr(&mapping.to));
+		free_mapping_string(table.table[i].from);
+		free_mapping_string(table.table[i].to);
 	}
 	free(table.table);
 }
